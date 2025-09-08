@@ -3,274 +3,465 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>URL & IP チェッカー — 改良UI</title>
-  <!-- Tailwind CDN - 開発用 (本番はビルド推奨) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>URL チェッカー — 単一ファイル版</title>
   <style>
-    /* Windows11っぽい柔らかいシャドウと丸み調節 */
+    /* ------------------------------
+       色変数（元CSSの主要変数を反映）
+       ------------------------------ */
     :root{
-      --glass: rgba(255,255,255,0.7);
+      --font-size:16px;
+      --background:#ffffff;
+      --foreground:#111111;
+      --card:#ffffff;
+      --card-foreground:#111111;
+      --primary:#030213;
+      --primary-foreground:#ffffff;
+      --muted:#ececf0;
+      --muted-foreground:#717182;
+      --accent:#e9ebef;
+      --destructive:#d4183d;
+      --border: rgba(0,0,0,0.08);
+      --input-background:#f3f3f5;
+      --radius:0.75rem;
+      --shadow: 0 6px 18px rgba(2,6,23,0.08);
     }
-    .win-card{
-      background: var(--glass);
-      backdrop-filter: blur(6px) saturate(120%);
-      -webkit-backdrop-filter: blur(6px) saturate(120%);
-      border: 1px solid rgba(15,23,42,0.06);
-      box-shadow: 0 10px 30px rgba(2,6,23,0.08);
-      border-radius: 16px;
+
+    /* ダークモードは必要なら .dark を body に付与 */
+    .dark {
+      --background:#0f1724;
+      --foreground:#e6eef8;
+      --card:#0b1220;
+      --card-foreground:#e6eef8;
+      --primary:#cbd5ff;
+      --primary-foreground:#0b1220;
+      --muted:#0b1220;
+      --muted-foreground:#95a3bf;
+      --input-background:#0b1220;
+      --border: rgba(255,255,255,0.06);
+      --shadow: 0 6px 18px rgba(2,6,23,0.45);
     }
-    .muted { color: #6b7280 }
-    .chip { font-weight:600; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:13px }
-    pre { white-space:pre-wrap; word-break:break-word; font-size:13px }
-    /* 簡易スパークライン */
-    .spark { display:flex; gap:4px; align-items:end; height:36px }
-    .spark > div { width:6px; border-radius:3px; background:linear-gradient(180deg,#60a5fa,#2563eb); }
+
+    /* 基本リセット */
+    * { box-sizing: border-box; }
+    html { font-size: var(--font-size); }
+    body {
+      margin:0;
+      font-family: Inter, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+      background: linear-gradient(180deg, var(--background), #fbfbfd);
+      color: var(--foreground);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding:32px;
+    }
+
+    /* コンテナ */
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 24px;
+    }
+
+    .center {
+      text-align:center;
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      margin: 0;
+      font-weight: 600;
+    }
+    p.lead {
+      margin: 6px 0 0 0;
+      color: var(--muted-foreground);
+      font-size: 0.95rem;
+    }
+
+    /* カード */
+    .card {
+      background: var(--card);
+      color: var(--card-foreground);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .card-title {
+      font-weight:600;
+    }
+
+    /* フォーム */
+    form.row {
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    input[type="url"]{
+      flex:1;
+      padding:10px 12px;
+      border-radius: calc(var(--radius) - 4px);
+      border:1px solid var(--border);
+      background: var(--input-background);
+      color: var(--foreground);
+      font-size:1rem;
+      outline: none;
+    }
+    input[type="url"]:focus {
+      box-shadow: 0 0 0 4px rgba(2,6,23,0.05);
+      border-color: rgba(0,0,0,0.12);
+    }
+
+    button.btn {
+      padding:10px 14px;
+      border-radius: calc(var(--radius) - 2px);
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border:none;
+      font-weight:600;
+      cursor:pointer;
+      min-width:110px;
+    }
+    button.btn[disabled] {
+      opacity:0.55;
+      cursor:not-allowed;
+    }
+
+    .error { color: var(--destructive); font-size:0.9rem; margin-top:8px; }
+
+    /* ローディングUI */
+    .loader {
+      display:inline-block;
+      width:36px; height:36px;
+      border-radius:50%;
+      border:4px solid rgba(0,0,0,0.08);
+      border-bottom-color: var(--primary);
+      animation:spin 1s linear infinite;
+      margin: 8px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 結果グリッド */
+    .results {
+      display:grid;
+      gap:16px;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    @media (max-width:880px) {
+      .results { grid-template-columns: 1fr; }
+    }
+
+    .center-block { text-align:center; }
+
+    /* バッジ */
+    .badge {
+      display:inline-block;
+      padding:6px 10px;
+      border-radius: 999px;
+      font-weight:700;
+      font-size:0.85rem;
+    }
+    .badge.safe { background:#22c55e; color:white; }
+    .badge.warning { background:#f59e0b; color:#1f2937; }
+    .badge.danger { background:#ef4444; color:white; }
+    .badge.outline {
+      background:transparent;
+      border:1px solid var(--border);
+      color:var(--foreground);
+    }
+
+    /* プログレスバー */
+    .progress {
+      height:10px;
+      background: #f0f2f5;
+      border-radius:999px;
+      overflow:hidden;
+      margin-top:8px;
+      border:1px solid rgba(0,0,0,0.03);
+    }
+    .progress > .bar {
+      height:100%;
+      width:0%;
+      transition: width 600ms ease;
+    }
+    .bar.safe { background: linear-gradient(90deg,#16a34a,#34d399); }
+    .bar.warning { background: linear-gradient(90deg,#f59e0b,#fbbf24); }
+    .bar.danger { background: linear-gradient(90deg,#ef4444,#fb7185); }
+
+    /* 小さめのテキスト */
+    .muted { color:var(--muted-foreground); font-size:0.9rem; }
+    .xs { font-size:0.82rem; color:var(--muted-foreground); }
+
+    /* 機能タグ */
+    .feature {
+      display:inline-block;
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      font-size:0.82rem;
+      margin:4px 6px 0 0;
+    }
+
+    /* アイコン用 */
+    .icon {
+      width:20px; height:20px; display:inline-block; vertical-align:middle;
+    }
+
+    /* レイアウトの余白 */
+    .space-y-2 > * + * { margin-top:8px; }
+
+    /* 小さなグレーのラベル行 */
+    .kv { display:flex; justify-content:space-between; font-size:0.92rem; color:var(--muted-foreground); }
+
+    /* footer note */
+    .note { font-size:0.85rem; color:var(--muted-foreground); text-align:center; margin-top:6px; }
+
   </style>
 </head>
-<body class="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6">
-  <main class="w-full max-w-5xl">
-    <header class="mb-6 flex items-center gap-4">
-      <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-sky-500 to-violet-500 flex items-center justify-center text-white text-lg font-semibold shadow-lg">UI</div>
-      <div>
-        <h1 class="text-xl font-semibold">URL & IP チェッカー</h1>
-        <p class="muted text-sm">URLのヘッダ・IP解決・レスポンスタイム。そしてWeb速度（クライアント・サーバー測定）を視覚的に表示します。</p>
-      </div>
-    </header>
+<body>
+  <div class="container">
+    <div class="center">
+      <h1>URL チェッカー</h1>
+      <p class="lead">URLの危険度、速度、種類をシンプルに分析します（モック分析）</p>
+    </div>
 
-    <section class="grid lg:grid-cols-3 gap-6">
-      <!-- 左: 入力 -->
-      <div class="lg:col-span-2 win-card p-5">
-        <div class="flex flex-col gap-4">
-          <label class="text-sm font-medium">チェックする URL</label>
-          <div class="flex gap-3">
-            <input id="inputUrl" class="flex-1 rounded-xl border-gray-200 p-3 shadow-sm" type="text" placeholder="https://example.com" value="https://example.com">
-            <button id="btnCheck" class="rounded-xl px-4 py-2 bg-sky-600 text-white font-semibold shadow hover:bg-sky-700">チェック</button>
-            <button id="btnResolve" class="rounded-xl px-4 py-2 bg-gray-100 text-gray-800 font-medium shadow hover:bg-gray-200">DNS</button>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <label class="text-sm font-medium">API ベース</label>
-            <input id="apiBase" class="rounded-xl border-gray-200 p-2 shadow-sm w-72" value="http://localhost:8080">
-            <span class="text-sm muted">（ローカルのバックエンドを使用することを推奨）</span>
-          </div>
-
-          <div class="grid sm:grid-cols-2 gap-3">
-            <div class="p-3 rounded-xl border border-gray-100 bg-white">
-              <div class="flex items-center justify-between">
-                <div>
-                  <div class="text-xs muted">最速応答（クライアント）</div>
-                  <div id="clientFast" class="text-lg font-semibold">-</div>
-                </div>
-                <div class="chip">クライアント</div>
-              </div>
-              <div class="mt-2 text-sm muted">ブラウザの Navigation Timing を利用</div>
-            </div>
-
-            <div class="p-3 rounded-xl border border-gray-100 bg-white">
-              <div class="flex items-center justify-between">
-                <div>
-                  <div class="text-xs muted">平均 RTT（5回）</div>
-                  <div id="rttAvg" class="text-lg font-semibold">-</div>
-                </div>
-                <div class="chip">サーバー経由</div>
-              </div>
-              <div class="mt-2 text-sm muted">バックエンド経由で複数回 ping 的な測定を行います</div>
-            </div>
-          </div>
-
-          <div class="mt-3">
-            <label class="text-sm font-medium">速度測定</label>
-            <div class="flex gap-2 mt-2">
-              <button id="measureClient" class="px-3 py-2 rounded-lg bg-emerald-500 text-white font-medium">クライアント測定</button>
-              <button id="measureServer" class="px-3 py-2 rounded-lg bg-indigo-600 text-white font-medium">サーバー測定 (5回)</button>
-              <button id="clearBtn" class="px-3 py-2 rounded-lg bg-gray-100 text-gray-800">クリア</button>
-            </div>
-          </div>
-
-          <div class="mt-4">
-            <div class="text-sm font-medium">グラフ（単純スパークライン）</div>
-            <div id="spark" class="spark mt-2"></div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 右: 結果サマリ -->
-      <aside class="win-card p-5">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-sm muted">結果サマリ</div>
-          <button id="copyBtn" class="text-sm text-sky-600 hover:underline">コピー</button>
-        </div>
-
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="text-sm muted">HTTP ステータス</div>
-            <div id="statusTag" class="chip">-</div>
-          </div>
-          <div class="flex items-center justify-between">
-            <div class="text-sm muted">Content-Type</div>
-            <div id="contentType" class="text-sm">-</div>
-          </div>
-          <div class="flex items-center justify-between">
-            <div class="text-sm muted">レスポンスタイム</div>
-            <div id="resTime" class="text-sm">-</div>
-          </div>
-          <div class="flex items-center justify-between">
-            <div class="text-sm muted">判定</div>
-            <div id="langDetect" class="text-sm">-</div>
-          </div>
-          <div class="flex items-center justify-between">
-            <div class="text-sm muted">解決 IP</div>
-            <div id="ipAddr" class="text-sm">-</div>
-          </div>
-        </div>
-
-        <hr class="my-4">
-
+    <div class="card">
+      <div class="card-header">
+        <!-- Globe SVG -->
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
         <div>
-          <div class="text-sm muted mb-2">ヘッダ / 本文抜粋</div>
-          <div class="max-h-48 overflow-auto bg-white p-3 rounded-lg border border-gray-100">
-            <pre id="headers">-</pre>
-          </div>
+          <div class="card-title">URL分析</div>
+          <div class="xs">危険度・速度・タイプを簡易判定（実運用の代わりにはなりません）</div>
         </div>
-      </aside>
-    </section>
+      </div>
 
-    <footer class="mt-6 text-sm muted">注意: 外部サイト取得は CORS の影響を受けます。ローカルで付属のバックエンドを起動して使ってください。</footer>
-  </main>
+      <form id="urlForm" class="row" autocomplete="off">
+        <input id="urlInput" type="url" placeholder="https://example.com" required />
+        <button id="submitBtn" class="btn" type="submit">分析開始</button>
+      </form>
+      <div id="error" class="error" role="alert" aria-live="polite"></div>
+    </div>
+
+    <div id="loadingCard" class="card" style="display:none; text-align:center;">
+      <div class="loader" aria-hidden></div>
+      <div class="muted">URLを分析中です...</div>
+    </div>
+
+    <div id="resultArea"></div>
+
+    <div class="note">※このツールはデモ用のモック分析です。実運用時は外部APIやセキュリティDBに照合してください。</div>
+  </div>
 
   <script>
-    // UI要素
-    const btn = document.getElementById('btnCheck');
-    const btnResolve = document.getElementById('btnResolve');
-    const inputUrl = document.getElementById('inputUrl');
-    const apiBase = document.getElementById('apiBase');
-    const headersEl = document.getElementById('headers');
-    const statusTag = document.getElementById('statusTag');
-    const contentTypeEl = document.getElementById('contentType');
-    const resTimeEl = document.getElementById('resTime');
-    const langDetectEl = document.getElementById('langDetect');
-    const ipAddrEl = document.getElementById('ipAddr');
-    const clientFastEl = document.getElementById('clientFast');
-    const rttAvgEl = document.getElementById('rttAvg');
-    const sparkEl = document.getElementById('spark');
-    const copyBtn = document.getElementById('copyBtn');
-    const clearBtn = document.getElementById('clearBtn');
+    /* -------------------------
+       モック分析ロジック（元と同等）
+       ------------------------- */
+    const form = document.getElementById('urlForm');
+    const urlInput = document.getElementById('urlInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingCard = document.getElementById('loadingCard');
+    const errorEl = document.getElementById('error');
+    const resultArea = document.getElementById('resultArea');
 
-    // 共通表示更新
-    function speedLabel(ms){ if(ms==null||ms==='-'||isNaN(ms)) return {label:'-', value:null}; if(ms<200) return {label:'早い', value:ms}; if(ms<800) return {label:'普通', value:ms}; return {label:'遅い', value:ms}; }
-
-    function setSummary({status, contentType, time, detect, ip}){
-      statusTag.textContent = status || '-';
-      contentTypeEl.textContent = contentType || '-';
-      resTimeEl.textContent = time ? time + ' ms' : '-';
-      langDetectEl.textContent = detect || '-';
-      ipAddrEl.textContent = ip || '-';
-    }
-
-    function showHeaders(text){ headersEl.textContent = text }
-
-    // URLチェック (バックエンド経由推奨)
-    async function checkUrl(){
-      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
-      const base = apiBase.value.replace(/\/$/, '');
-      try{
-        showHeaders('実行中...'); setSummary({});
-        const start = performance.now();
-        const res = await fetch(`${base}/api/checkUrl?url=${encodeURIComponent(url)}&method=HEAD`);
-        const took = Math.round(performance.now() - start);
-        if(!res.ok){ const err = await res.text(); showHeaders(err); setSummary({status: res.status, time: took}); return }
-        const json = await res.json();
-        showHeaders(JSON.stringify(json.headers, null, 2));
-        const detect = detectTech(json.bodySnippet, json.contentType || (json.headers && json.headers['content-type']));
-        setSummary({status: json.status, contentType: json.contentType, time: took, detect, ip: json.ip});
-      }catch(e){ showHeaders('エラー: ' + e.message); }
-    }
-
-    async function resolveHost(){
-      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
-      let host; try{ host = (new URL(url)).hostname } catch{ alert('正しいURLを入力してください'); return }
-      const base = apiBase.value.replace(/\/$/, '');
-      try{
-        const res = await fetch(`${base}/api/resolve?host=${encodeURIComponent(host)}`);
-        if(!res.ok){ showHeaders('DNS 取得に失敗'); return }
-        const j = await res.json(); showHeaders(JSON.stringify(j, null, 2)); setSummary({ip: j.ips && j.ips[0]});
-      }catch(e){ showHeaders('エラー: ' + e.message) }
-    }
-
-    function detectTech(body, contentType){
-      if(!body && !contentType) return '-';
-      const t = (contentType||'').toLowerCase();
-      if(t.includes('text/html')) return 'HTML';
-      if(t.includes('javascript')) return 'JavaScript';
-      if(body){
-        const b = body.toLowerCase();
-        if(b.includes('<!doctype html')||b.includes('<html')) return 'HTML';
-        if(b.includes('function(') || b.includes('document.getelement') || b.includes('addEventListener(')) return 'JavaScript';
-        if(b.includes('.class') && b.includes('jsp')) return '可能性: Java(JSP)';
-        if(b.includes('stylesheet') || b.includes('.css')) return 'CSS / HTML';
+    function getDangerIconSVG(status){
+      if(status === 'safe'){
+        return `<svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       }
-      return '-';
+      // warning/danger use triangle
+      return `<svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M10.29 3.86L1.82 18a1.5 1.5 0 001.29 2.25h18.78A1.5 1.5 0 0022.18 18L13.71 3.86a1.5 1.5 0 00-2.42 0z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>`;
     }
 
-    btn.addEventListener('click', checkUrl);
-    btnResolve.addEventListener('click', resolveHost);
+    function getSpeedCategory(loadTime){
+      if (loadTime < 800) return { label: 'とても早い', colorClass:'safe' , textColor:'#16a34a' };
+      if (loadTime < 1500) return { label: '早い', colorClass:'fast', textColor:'#2563eb' };
+      if (loadTime < 2500) return { label: '普通', colorClass:'warning', textColor:'#d97706' };
+      return { label: '遅い', colorClass:'danger', textColor:'#dc2626' };
+    }
 
-    // クライアント側のページロード速度を表示
-    document.getElementById('measureClient').addEventListener('click', () => {
-      const perf = performance.getEntriesByType('navigation')[0] || performance.timing;
-      // navigation timing v2 / fallback
-      const dns = (perf.domainLookupEnd && perf.domainLookupStart) ? perf.domainLookupEnd - perf.domainLookupStart : -1;
-      const conn = (perf.connectEnd && perf.connectStart) ? perf.connectEnd - perf.connectStart : -1;
-      const res = (perf.responseEnd && perf.requestStart) ? perf.responseEnd - perf.requestStart : -1;
-      const dom = (perf.domComplete && perf.domInteractive) ? perf.domComplete - perf.domInteractive : -1;
-      const total = (perf.loadEventEnd && perf.startTime) ? perf.loadEventEnd - perf.startTime : Math.round(performance.now());
-      const _s_client = speedLabel(total); clientFastEl.textContent = _s_client.label + ' (' + total + ' ms)';
-      showHeaders(JSON.stringify({"DNS": dns + ' ms', "TCP": conn + ' ms', "Response": res + ' ms', "DOM": dom + ' ms', "Total": total + ' ms'}, null, 2));
-    });
+    async function analyzeUrlMock(url){
+      // 既存のロジックに合わせる（2秒の遅延）
+      await new Promise(r => setTimeout(r, 1600));
+      const domain = (() => {
+        try { return new URL(url).hostname.toLowerCase(); } catch(e){ return '';}
+      })();
 
-    // サーバー経由の RTT を複数回測定して表示
-    document.getElementById('measureServer').addEventListener('click', async () => {
-      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
-      const base = apiBase.value.replace(/\/$/, '');
-      const tries = 5; let times = [];
-      sparkEl.innerHTML = '';
-      rttAvgEl.textContent = '測定中...';
-      for(let i=0;i<tries;i++){
-        try{
-          const t0 = performance.now();
-          const r = await fetch(`${base}/api/checkUrl?url=${encodeURIComponent(url)}&method=HEAD`);
-          const t1 = performance.now();
-          const elapsed = Math.round(t1 - t0);
-          times.push(elapsed);
-          // スパークライン用のバー
-          const bar = document.createElement('div'); bar.style.height = Math.max(4, Math.min(36, elapsed/10)) + 'px'; sparkEl.appendChild(bar);
-          await new Promise(r=>setTimeout(r, 150));
-        }catch(e){ times.push(null); const bar = document.createElement('div'); bar.style.height = '4px'; bar.style.opacity = '0.3'; sparkEl.appendChild(bar); }
+      let dangerLevel;
+      if (domain.includes('phishing') || domain.includes('malware') || domain.endsWith('.tk')) {
+        dangerLevel = { score:85, status:'danger', issues:['Suspicious domain pattern','Known malicious TLD','No SSL certificate'] };
+      } else if (domain.includes('ads') || domain.includes('tracker')) {
+        dangerLevel = { score:45, status:'warning', issues:['Contains tracking scripts','Advertisement content'] };
+      } else {
+        dangerLevel = { score:15, status:'safe', issues:[] };
       }
-      const valid = times.filter(v=>typeof v==='number');
-      const avg = valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
-      const _s = (avg && typeof avg==='number') ? speedLabel(avg) : {label:'-',value:null}; rttAvgEl.textContent = avg ? (_s.label + ' (' + avg + ' ms)') : '失敗';
-      // 詳細表示
-      showHeaders('RTTリスト: ' + JSON.stringify(times, null, 2));
-      // 更新サマリ
-      setSummary({time: avg, status: '-', contentType: '-', detect: '-', ip: '-' });
+
+      const baseSpeed = Math.random() * 2000 + 500;
+      const speed = {
+        loadTime: Math.round(baseSpeed),
+        score: Math.max(0, Math.round(100 - (baseSpeed / 30))),
+        metrics: {
+          dns: Math.round(Math.random() * 200 + 50),
+          connection: Math.round(Math.random() * 300 + 100),
+          response: Math.round(baseSpeed - 350)
+        }
+      };
+
+      let type;
+      if (domain.includes('shop') || domain.includes('store') || domain.includes('buy')) {
+        type = { category:'E-commerce', description:'Online shopping platform', features:['Payment processing','Product catalog','User accounts'] };
+      } else if (domain.includes('news') || domain.includes('blog')) {
+        type = { category:'News/Media', description:'News and content website', features:['Article publishing','Media content','Social sharing'] };
+      } else if (domain.includes('github') || domain.includes('stackoverflow')) {
+        type = { category:'Technology', description:'Developer/Tech platform', features:['Code repository','Developer tools','Community features'] };
+      } else {
+        type = { category:'General', description:'General purpose website', features:['Static content','Information display'] };
+      }
+
+      return { url, dangerLevel, speed, type };
+    }
+
+    function createResultHTML(result){
+      const speedCat = getSpeedCategory(result.speed.loadTime);
+      const danger = result.dangerLevel;
+
+      // Danger card
+      const dangerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div style="width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:rgba(0,0,0,0.03);">
+              ${getDangerIconSVG(danger.status)}
+            </div>
+            <div>
+              <div class="card-title">危険度</div>
+              <div class="xs">総合リスクスコア</div>
+            </div>
+          </div>
+
+          <div class="center-block space-y-2">
+            <div style="font-size:1.5rem; font-weight:700; color:${danger.status==='safe' ? '#16a34a' : danger.status==='warning' ? '#b45309' : '#dc2626'}">
+              ${danger.score}%
+            </div>
+            <div>${danger.status === 'safe' ? `<span class="badge safe">安全</span>` : danger.status === 'warning' ? `<span class="badge warning">注意</span>` : `<span class="badge danger">危険</span>`}</div>
+
+            <div class="progress" aria-hidden>
+              <div class="bar ${danger.status}" style="width:${danger.score}%;"></div>
+            </div>
+
+            ${danger.issues.length ? `<div class="muted" style="margin-top:8px; text-align:left;"><div class="xs">検出された問題:</div><ul>${danger.issues.map(i=>`<li>${i}</li>`).join('')}</ul></div>` : `<div class="xs muted">特に問題は検出されませんでした。</div>`}
+          </div>
+        </div>
+      `;
+
+      // Speed card
+      const speedHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div style="width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:rgba(0,0,0,0.03);">
+              <!-- Zap icon -->
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+              <div class="card-title">速度</div>
+              <div class="xs">ロード時間と主要メトリクス</div>
+            </div>
+          </div>
+
+          <div class="center-block space-y-2">
+            <div style="font-size:1.25rem; font-weight:700; color:${speedCat.textColor || '#2563eb'}">
+              ${speedCat.label}
+            </div>
+            <div style="margin-top:4px;">
+              <span class="badge outline"> ${result.speed.loadTime}ms </span>
+            </div>
+
+            <div class="progress" aria-hidden>
+              <div class="bar ${danger.status}" style="width:${result.speed.score}%;"></div>
+            </div>
+
+            <div style="margin-top:8px; text-align:left;">
+              <div class="kv"><span>DNS解決:</span><span>${result.speed.metrics.dns}ms</span></div>
+              <div class="kv"><span>接続:</span><span>${result.speed.metrics.connection}ms</span></div>
+              <div class="kv"><span>レスポンス:</span><span>${result.speed.metrics.response}ms</span></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Type card
+      const typeHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div style="width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:rgba(0,0,0,0.03);">
+              <!-- Globe icon -->
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+              <div class="card-title">種類</div>
+              <div class="xs">サイトのカテゴリ推定</div>
+            </div>
+          </div>
+
+          <div class="space-y-2" style="text-align:center;">
+            <div style="font-weight:700; color:#7c3aed; font-size:1.05rem;">${result.type.category}</div>
+            <div style="margin-top:6px;"><span class="badge outline">${result.type.description}</span></div>
+
+            <div style="margin-top:10px; text-align:left;">
+              <div class="xs">主な機能:</div>
+              <div style="margin-top:6px;">
+                ${result.type.features.map(f=>`<span class="feature">${f}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Compose a responsive grid
+      return `<div class="results">${dangerHTML}${speedHTML}${typeHTML}</div>`;
+    }
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const url = urlInput.value.trim();
+      errorEl.textContent = '';
+      resultArea.innerHTML = '';
+
+      // Basic URL validation (schemes)
+      try {
+        const parsed = new URL(url);
+        if (!['http:','https:'].includes(parsed.protocol)) {
+          throw new Error('invalid-protocol');
+        }
+      } catch (e) {
+        errorEl.textContent = '無効なURLです。正しいURL形式（https://...）で入力してください。';
+        return;
+      }
+
+      // UI state
+      submitBtn.disabled = true;
+      loadingCard.style.display = 'block';
+
+      try {
+        const analysis = await analyzeUrlMock(url);
+        resultArea.innerHTML = createResultHTML(analysis);
+      } catch (err) {
+        console.error(err);
+        errorEl.textContent = '分析中にエラーが発生しました。コンソールを確認してください。';
+      } finally {
+        loadingCard.style.display = 'none';
+        submitBtn.disabled = false;
+      }
     });
 
-    // クリア
-    clearBtn.addEventListener('click', () => {
-      setSummary({}); showHeaders('-'); clientFastEl.textContent = '-'; rttAvgEl.textContent = '-'; sparkEl.innerHTML = '';
-    });
-
-    // コピー
-    copyBtn.addEventListener('click', async () => {
-      const text = `Status: ${statusTag.textContent}
-Content-Type: ${contentTypeEl.textContent}
-RTT: ${rttAvgEl.textContent}
-IP: ${ipAddrEl.textContent}`;
-      try{ await navigator.clipboard.writeText(text); copyBtn.textContent = 'コピー済み'; setTimeout(()=>copyBtn.textContent='コピー',1200);}catch(e){ alert('コピーに失敗しました'); }
-    });
-
+    // ユーザビリティ: Enterで submit はフォーム自体が処理してくれます
+    // 余談: テスト用URLの例
+    //  - マルウェア検出の疑似: https://example.phishing.tk
+    //  - トラッキング検出の疑似: https://ads.example.com
   </script>
 </body>
 </html>
