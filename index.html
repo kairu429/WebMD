@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>URL & IP チェッカー — 改良UI</title>
+  <!-- Tailwind CDN - 開発用 (本番はビルド推奨) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Windows11っぽい柔らかいシャドウと丸み調節 */
+    :root{
+      --glass: rgba(255,255,255,0.7);
+    }
+    .win-card{
+      background: var(--glass);
+      backdrop-filter: blur(6px) saturate(120%);
+      -webkit-backdrop-filter: blur(6px) saturate(120%);
+      border: 1px solid rgba(15,23,42,0.06);
+      box-shadow: 0 10px 30px rgba(2,6,23,0.08);
+      border-radius: 16px;
+    }
+    .muted { color: #6b7280 }
+    .chip { font-weight:600; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:13px }
+    pre { white-space:pre-wrap; word-break:break-word; font-size:13px }
+    /* 簡易スパークライン */
+    .spark { display:flex; gap:4px; align-items:end; height:36px }
+    .spark > div { width:6px; border-radius:3px; background:linear-gradient(180deg,#60a5fa,#2563eb); }
+  </style>
+</head>
+<body class="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6">
+  <main class="w-full max-w-5xl">
+    <header class="mb-6 flex items-center gap-4">
+      <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-sky-500 to-violet-500 flex items-center justify-center text-white text-lg font-semibold shadow-lg">UI</div>
+      <div>
+        <h1 class="text-xl font-semibold">URL & IP チェッカー</h1>
+        <p class="muted text-sm">URLのヘッダ・IP解決・レスポンスタイム。そしてWeb速度（クライアント・サーバー測定）を視覚的に表示します。</p>
+      </div>
+    </header>
+
+    <section class="grid lg:grid-cols-3 gap-6">
+      <!-- 左: 入力 -->
+      <div class="lg:col-span-2 win-card p-5">
+        <div class="flex flex-col gap-4">
+          <label class="text-sm font-medium">チェックする URL</label>
+          <div class="flex gap-3">
+            <input id="inputUrl" class="flex-1 rounded-xl border-gray-200 p-3 shadow-sm" type="text" placeholder="https://example.com" value="https://example.com">
+            <button id="btnCheck" class="rounded-xl px-4 py-2 bg-sky-600 text-white font-semibold shadow hover:bg-sky-700">チェック</button>
+            <button id="btnResolve" class="rounded-xl px-4 py-2 bg-gray-100 text-gray-800 font-medium shadow hover:bg-gray-200">DNS</button>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm font-medium">API ベース</label>
+            <input id="apiBase" class="rounded-xl border-gray-200 p-2 shadow-sm w-72" value="http://localhost:8080">
+            <span class="text-sm muted">（ローカルのバックエンドを使用することを推奨）</span>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div class="p-3 rounded-xl border border-gray-100 bg-white">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs muted">最速応答（クライアント）</div>
+                  <div id="clientFast" class="text-lg font-semibold">-</div>
+                </div>
+                <div class="chip">クライアント</div>
+              </div>
+              <div class="mt-2 text-sm muted">ブラウザの Navigation Timing を利用</div>
+            </div>
+
+            <div class="p-3 rounded-xl border border-gray-100 bg-white">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs muted">平均 RTT（5回）</div>
+                  <div id="rttAvg" class="text-lg font-semibold">-</div>
+                </div>
+                <div class="chip">サーバー経由</div>
+              </div>
+              <div class="mt-2 text-sm muted">バックエンド経由で複数回 ping 的な測定を行います</div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="text-sm font-medium">速度測定</label>
+            <div class="flex gap-2 mt-2">
+              <button id="measureClient" class="px-3 py-2 rounded-lg bg-emerald-500 text-white font-medium">クライアント測定</button>
+              <button id="measureServer" class="px-3 py-2 rounded-lg bg-indigo-600 text-white font-medium">サーバー測定 (5回)</button>
+              <button id="clearBtn" class="px-3 py-2 rounded-lg bg-gray-100 text-gray-800">クリア</button>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="text-sm font-medium">グラフ（単純スパークライン）</div>
+            <div id="spark" class="spark mt-2"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 右: 結果サマリ -->
+      <aside class="win-card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm muted">結果サマリ</div>
+          <button id="copyBtn" class="text-sm text-sky-600 hover:underline">コピー</button>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm muted">HTTP ステータス</div>
+            <div id="statusTag" class="chip">-</div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm muted">Content-Type</div>
+            <div id="contentType" class="text-sm">-</div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm muted">レスポンスタイム</div>
+            <div id="resTime" class="text-sm">-</div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm muted">判定</div>
+            <div id="langDetect" class="text-sm">-</div>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm muted">解決 IP</div>
+            <div id="ipAddr" class="text-sm">-</div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <div>
+          <div class="text-sm muted mb-2">ヘッダ / 本文抜粋</div>
+          <div class="max-h-48 overflow-auto bg-white p-3 rounded-lg border border-gray-100">
+            <pre id="headers">-</pre>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="mt-6 text-sm muted">注意: 外部サイト取得は CORS の影響を受けます。ローカルで付属のバックエンドを起動して使ってください。</footer>
+  </main>
+
+  <script>
+    // UI要素
+    const btn = document.getElementById('btnCheck');
+    const btnResolve = document.getElementById('btnResolve');
+    const inputUrl = document.getElementById('inputUrl');
+    const apiBase = document.getElementById('apiBase');
+    const headersEl = document.getElementById('headers');
+    const statusTag = document.getElementById('statusTag');
+    const contentTypeEl = document.getElementById('contentType');
+    const resTimeEl = document.getElementById('resTime');
+    const langDetectEl = document.getElementById('langDetect');
+    const ipAddrEl = document.getElementById('ipAddr');
+    const clientFastEl = document.getElementById('clientFast');
+    const rttAvgEl = document.getElementById('rttAvg');
+    const sparkEl = document.getElementById('spark');
+    const copyBtn = document.getElementById('copyBtn');
+    const clearBtn = document.getElementById('clearBtn');
+
+    // 共通表示更新
+    function speedLabel(ms){ if(ms==null||ms==='-'||isNaN(ms)) return {label:'-', value:null}; if(ms<200) return {label:'早い', value:ms}; if(ms<800) return {label:'普通', value:ms}; return {label:'遅い', value:ms}; }
+
+    function setSummary({status, contentType, time, detect, ip}){
+      statusTag.textContent = status || '-';
+      contentTypeEl.textContent = contentType || '-';
+      resTimeEl.textContent = time ? time + ' ms' : '-';
+      langDetectEl.textContent = detect || '-';
+      ipAddrEl.textContent = ip || '-';
+    }
+
+    function showHeaders(text){ headersEl.textContent = text }
+
+    // URLチェック (バックエンド経由推奨)
+    async function checkUrl(){
+      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
+      const base = apiBase.value.replace(/\/$/, '');
+      try{
+        showHeaders('実行中...'); setSummary({});
+        const start = performance.now();
+        const res = await fetch(`${base}/api/checkUrl?url=${encodeURIComponent(url)}&method=HEAD`);
+        const took = Math.round(performance.now() - start);
+        if(!res.ok){ const err = await res.text(); showHeaders(err); setSummary({status: res.status, time: took}); return }
+        const json = await res.json();
+        showHeaders(JSON.stringify(json.headers, null, 2));
+        const detect = detectTech(json.bodySnippet, json.contentType || (json.headers && json.headers['content-type']));
+        setSummary({status: json.status, contentType: json.contentType, time: took, detect, ip: json.ip});
+      }catch(e){ showHeaders('エラー: ' + e.message); }
+    }
+
+    async function resolveHost(){
+      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
+      let host; try{ host = (new URL(url)).hostname } catch{ alert('正しいURLを入力してください'); return }
+      const base = apiBase.value.replace(/\/$/, '');
+      try{
+        const res = await fetch(`${base}/api/resolve?host=${encodeURIComponent(host)}`);
+        if(!res.ok){ showHeaders('DNS 取得に失敗'); return }
+        const j = await res.json(); showHeaders(JSON.stringify(j, null, 2)); setSummary({ip: j.ips && j.ips[0]});
+      }catch(e){ showHeaders('エラー: ' + e.message) }
+    }
+
+    function detectTech(body, contentType){
+      if(!body && !contentType) return '-';
+      const t = (contentType||'').toLowerCase();
+      if(t.includes('text/html')) return 'HTML';
+      if(t.includes('javascript')) return 'JavaScript';
+      if(body){
+        const b = body.toLowerCase();
+        if(b.includes('<!doctype html')||b.includes('<html')) return 'HTML';
+        if(b.includes('function(') || b.includes('document.getelement') || b.includes('addEventListener(')) return 'JavaScript';
+        if(b.includes('.class') && b.includes('jsp')) return '可能性: Java(JSP)';
+        if(b.includes('stylesheet') || b.includes('.css')) return 'CSS / HTML';
+      }
+      return '-';
+    }
+
+    btn.addEventListener('click', checkUrl);
+    btnResolve.addEventListener('click', resolveHost);
+
+    // クライアント側のページロード速度を表示
+    document.getElementById('measureClient').addEventListener('click', () => {
+      const perf = performance.getEntriesByType('navigation')[0] || performance.timing;
+      // navigation timing v2 / fallback
+      const dns = (perf.domainLookupEnd && perf.domainLookupStart) ? perf.domainLookupEnd - perf.domainLookupStart : -1;
+      const conn = (perf.connectEnd && perf.connectStart) ? perf.connectEnd - perf.connectStart : -1;
+      const res = (perf.responseEnd && perf.requestStart) ? perf.responseEnd - perf.requestStart : -1;
+      const dom = (perf.domComplete && perf.domInteractive) ? perf.domComplete - perf.domInteractive : -1;
+      const total = (perf.loadEventEnd && perf.startTime) ? perf.loadEventEnd - perf.startTime : Math.round(performance.now());
+      const _s_client = speedLabel(total); clientFastEl.textContent = _s_client.label + ' (' + total + ' ms)';
+      showHeaders(JSON.stringify({"DNS": dns + ' ms', "TCP": conn + ' ms', "Response": res + ' ms', "DOM": dom + ' ms', "Total": total + ' ms'}, null, 2));
+    });
+
+    // サーバー経由の RTT を複数回測定して表示
+    document.getElementById('measureServer').addEventListener('click', async () => {
+      const url = inputUrl.value.trim(); if(!url){ alert('URLを入力してください'); return }
+      const base = apiBase.value.replace(/\/$/, '');
+      const tries = 5; let times = [];
+      sparkEl.innerHTML = '';
+      rttAvgEl.textContent = '測定中...';
+      for(let i=0;i<tries;i++){
+        try{
+          const t0 = performance.now();
+          const r = await fetch(`${base}/api/checkUrl?url=${encodeURIComponent(url)}&method=HEAD`);
+          const t1 = performance.now();
+          const elapsed = Math.round(t1 - t0);
+          times.push(elapsed);
+          // スパークライン用のバー
+          const bar = document.createElement('div'); bar.style.height = Math.max(4, Math.min(36, elapsed/10)) + 'px'; sparkEl.appendChild(bar);
+          await new Promise(r=>setTimeout(r, 150));
+        }catch(e){ times.push(null); const bar = document.createElement('div'); bar.style.height = '4px'; bar.style.opacity = '0.3'; sparkEl.appendChild(bar); }
+      }
+      const valid = times.filter(v=>typeof v==='number');
+      const avg = valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+      const _s = (avg && typeof avg==='number') ? speedLabel(avg) : {label:'-',value:null}; rttAvgEl.textContent = avg ? (_s.label + ' (' + avg + ' ms)') : '失敗';
+      // 詳細表示
+      showHeaders('RTTリスト: ' + JSON.stringify(times, null, 2));
+      // 更新サマリ
+      setSummary({time: avg, status: '-', contentType: '-', detect: '-', ip: '-' });
+    });
+
+    // クリア
+    clearBtn.addEventListener('click', () => {
+      setSummary({}); showHeaders('-'); clientFastEl.textContent = '-'; rttAvgEl.textContent = '-'; sparkEl.innerHTML = '';
+    });
+
+    // コピー
+    copyBtn.addEventListener('click', async () => {
+      const text = `Status: ${statusTag.textContent}
+Content-Type: ${contentTypeEl.textContent}
+RTT: ${rttAvgEl.textContent}
+IP: ${ipAddrEl.textContent}`;
+      try{ await navigator.clipboard.writeText(text); copyBtn.textContent = 'コピー済み'; setTimeout(()=>copyBtn.textContent='コピー',1200);}catch(e){ alert('コピーに失敗しました'); }
+    });
+
+  </script>
+</body>
+</html>
